@@ -1,1 +1,50 @@
-const GH_USER='KhaineVulpana';function getToken(){return localStorage.getItem('gh_token')||''}function setToken(t){if(t)localStorage.setItem('gh_token',t)}async function ghFetch(u){const h={'Accept':'application/vnd.github+json'};const t=getToken();if(t)h['Authorization']='Bearer '+t;const r=await fetch(u,{headers:h});if(!r.ok){throw new Error('GitHub request failed: '+r.status)}return r.json()}async function fetchRepos(u=GH_USER){const repos=[];let p=1;while(p<=2){const c=await ghFetch(`https://api.github.com/users/${u}/repos?per_page=100&page=${p}&type=owner&sort=updated`);repos.push(...c);if(c.length<100)break;p++}return repos.filter(r=>!r.fork)}async function fetchLanguagesForRepo(o,repo){return ghFetch(`https://api.github.com/repos/${o}/${repo}/languages`)}async function mapLimit(items,limit,fn){const ret=[];const exec=[];for(const it of items){const pr=Promise.resolve().then(()=>fn(it));ret.push(pr);const e=pr.then(()=>exec.splice(exec.indexOf(e),1));exec.push(e);if(exec.length>=limit){await Promise.race(exec)}}return Promise.all(ret)}async function aggregateLanguages(u=GH_USER){const repos=await fetchRepos(u);const top=[...repos].sort((a,b)=>(b.stargazers_count||0)-(a.stargazers_count||0)).slice(0,24);const agg={};let stars=0;await mapLimit(top,6,async r=>{stars+=r.stargazers_count||0;const langs=await fetchLanguagesForRepo(u,r.name);for(const [k,v] of Object.entries(langs)){agg[k]=(agg[k]||0)+v}});return {repos,topStarred:top,aggregate:agg,stars}}function sortLangs(o){return Object.entries(o).sort((a,b)=>b[1]-a[1])}export{getToken,setToken,aggregateLanguages,sortLangs};
+// Utility module to fetch GitHub language data
+const GH_USER = 'KhaineVulpana';
+
+export function getToken(){ return window.localStorage.getItem('gh_token') || ''; }
+export function setToken(t){ if(t) window.localStorage.setItem('gh_token', t); }
+
+async function ghFetch(url){
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  const t = getToken();
+  if(t) headers['Authorization'] = 'Bearer ' + t;
+  const r = await fetch(url, { headers });
+  if(!r.ok){
+    const body = await r.text();
+    throw new Error('GitHub request failed: ' + r.status + ' ' + body);
+  }
+  return r.json();
+}
+
+export async function fetchRepos(username=GH_USER){
+  const repos = [];
+  let page = 1;
+  while(page <= 2){
+    const chunk = await ghFetch(`https://api.github.com/users/${username}/repos?per_page=100&page=${page}&type=owner&sort=updated`);
+    repos.push(...chunk);
+    if(chunk.length < 100) break;
+    page++;
+  }
+  return repos.filter(r => !r.fork);
+}
+
+export async function aggregateLanguages(username=GH_USER){
+  const repos = await fetchRepos(username);
+  const topStarred = [...repos].sort((a,b)=> (b.stargazers_count||0)-(a.stargazers_count||0)).slice(0, 24);
+
+  const allLangs = {};
+  let stars = 0;
+  await Promise.all(topStarred.map(async (r) => {
+    stars += r.stargazers_count || 0;
+    const langs = await ghFetch(`https://api.github.com/repos/${username}/${r.name}/languages`);
+    for(const [lang, bytes] of Object.entries(langs)){
+      allLangs[lang] = (allLangs[lang] || 0) + bytes;
+    }
+  }));
+
+  return { repos, topStarred, aggregate: allLangs, stars };
+}
+
+export function sortLangs(obj){
+  return Object.entries(obj).sort((a,b)=> b[1]-a[1]);
+}
