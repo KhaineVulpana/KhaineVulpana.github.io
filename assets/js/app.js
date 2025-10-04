@@ -4,19 +4,77 @@ const donutCtx = () => document.getElementById('langDonut').getContext('2d');
 const barsCtx = () => document.getElementById('langBars').getContext('2d');
 let donutChart = null;
 let barsChart = null;
+let projectCharts = [];
 
-function palette(n){
-  const base = ['#8ecaff','#a1d4ff','#b5ddff','#c9e6ff','#dcedff','#f5f7fa','#800020','#9a0f2b','#b31b35','#cd2740','#e7334a','#5a0d21'];
-  const out = [];
-  for(let i=0;i<n;i++) out.push(base[i % base.length]);
-  return out;
+const maroonShades = ['#5a0d21', '#92265a', '#b63e71', '#d45c88', '#f6b3c8'];
+const blueShades = ['#112a63', '#1b56d6', '#2f7bff', '#5fa8ff', '#8ecaff'];
+const grayShades = ['#111315', '#1f232b', '#2e3440', '#4b5563', '#9aa4b2', '#e7edf3'];
+
+const shadeSequence = (() => {
+  const sequence = [];
+  const max = Math.max(maroonShades.length, blueShades.length, grayShades.length);
+  for(let i = 0; i < max; i++){
+    if(maroonShades[i]) sequence.push(maroonShades[i]);
+    if(blueShades[i]) sequence.push(blueShades[i]);
+    if(grayShades[i]) sequence.push(grayShades[i]);
+  }
+  return sequence;
+})();
+
+const languageColors = new Map();
+let shadeIndex = 0;
+
+function resetLanguageColors(){
+  languageColors.clear();
+  shadeIndex = 0;
+}
+
+function colorForLanguage(label){
+  if(label === 'Other') return '#9aa4b2';
+  if(!label) return '#2e3440';
+  if(!languageColors.has(label)){
+    const color = shadeSequence[shadeIndex] || shadeSequence[shadeIndex % shadeSequence.length] || '#9aa4b2';
+    languageColors.set(label, color);
+    shadeIndex++;
+  }
+  return languageColors.get(label);
+}
+
+function ensureLanguageColors(languageList){
+  for(const lang of languageList){
+    if(lang && lang !== 'Other') colorForLanguage(lang);
+  }
+}
+
+function colorsForLabels(labels){
+  return labels.map(label => colorForLanguage(label));
+}
+
+function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
+  const labels = [];
+  const values = [];
+  let other = 0;
+  for(const [label, value] of entries){
+    const share = total ? value / total : 0;
+    if(labels.length < max || share >= minShare){
+      labels.push(label);
+      values.push(value);
+    }else{
+      other += value;
+    }
+  }
+  if(other > 0){
+    labels.push('Other');
+    values.push(other);
+  }
+  return { labels, values };
 }
 
 function renderDonut(labels, values){
   if(donutChart) donutChart.destroy();
   donutChart = new Chart(donutCtx(), {
     type: 'doughnut',
-    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: palette(values.length) }] },
+    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: colorsForLabels(labels) }] },
     options: { plugins: { legend: { labels: { color: '#e7edf3' } } } }
   });
 }
@@ -25,7 +83,7 @@ function renderBars(labels, values){
   if(barsChart) barsChart.destroy();
   barsChart = new Chart(barsCtx(), {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, borderWidth: 0 }] },
+    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: colorsForLabels(labels), borderRadius: 6 }] },
     options: {
       indexAxis: 'y',
       scales: {
@@ -37,28 +95,74 @@ function renderBars(labels, values){
   });
 }
 
-function renderProjects(list){
+function renderProjects(list, repoLangMap){
   const grid = document.getElementById('projectGrid');
   grid.innerHTML = '';
+  projectCharts.forEach(chart => chart.destroy());
+  projectCharts = [];
   for(const r of list){
     const card = document.createElement('div');
     card.className = 'project';
     const topics = (r.topics||[]).slice(0,4).map(t=>`<span class="tag-chip">${t}</span>`).join(' ');
     const desc = r.description ? r.description : 'No description provided.';
+    const chartId = `projectChart-${r.name.replace(/[^a-z0-9]/gi,'-')}`;
     card.innerHTML = `
-      <h4><a href="${r.html_url}" target="_blank" rel="noopener">${r.name}</a></h4>
-      <p class="muted">${desc}</p>
-      <div class="tags">${topics}</div>
-      <p class="tiny muted">★ ${r.stargazers_count || 0} · Updated ${new Date(r.updated_at).toLocaleDateString()}</p>
+      <div class="project-content">
+        <div class="project-info">
+          <h4><a href="${r.html_url}" target="_blank" rel="noopener">${r.name}</a></h4>
+          <p class="muted">${desc}</p>
+          <div class="tags">${topics}</div>
+          <p class="tiny muted">★ ${r.stargazers_count || 0} · Updated ${new Date(r.updated_at).toLocaleDateString()}</p>
+        </div>
+        <div class="project-chart">
+          <canvas id="${chartId}" width="140" height="140" aria-label="Language breakdown for ${r.name}" role="img"></canvas>
+        </div>
+      </div>
     `;
     grid.appendChild(card);
+
+    const langData = repoLangMap[r.name] || r.languages || {};
+    const entries = Object.entries(langData).sort((a,b)=>b[1]-a[1]);
+    const total = entries.reduce((acc,[,v])=>acc+v,0);
+    const canvas = document.getElementById(chartId);
+
+    if(!entries.length || total === 0){
+      const chartContainer = card.querySelector('.project-chart');
+      chartContainer.innerHTML = '<p class="tiny muted">No language data</p>';
+      continue;
+    }
+
+    const { labels, values } = computeSlices(entries, total, { max:6, minShare:0.03 });
+    const backgroundColor = colorsForLabels(labels);
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          borderWidth: 0,
+          backgroundColor,
+        }]
+      },
+      options: {
+        cutout: '60%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#e7edf3', boxWidth: 10, font: { size: 10 } }
+          }
+        }
+      }
+    });
+    projectCharts.push(chart);
   }
 }
 
 function setStats(repoCount, topLanguage, stars){
   document.getElementById('repoCount').textContent = repoCount;
   document.getElementById('topLang').textContent = topLanguage || '—';
-  document.getElementById('stars').textContent = stars;
+  document.getElementById('stars').textContent = Number(stars || 0).toLocaleString();
   document.getElementById('year').textContent = new Date().getFullYear();
 }
 
@@ -78,21 +182,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   try{
-    const { repos, topStarred, aggregate, stars } = await aggregateLanguages();
+    const { repos, topStarred, aggregate, repoLangs, stars } = await aggregateLanguages();
     const sorted = sortLangs(aggregate);
     if(sorted.length === 0){
       showError('No language data found. Add a token or check if repos are public.');
       return;
     }
 
-    const labels = sorted.slice(0,8).map(([k])=>k);
-    const values = sorted.slice(0,8).map(([,v])=>v);
-    const others = sorted.slice(8).reduce((a,[,v])=>a+v,0);
-    if(others>0){ labels.push('Other'); values.push(others); }
+    const total = sorted.reduce((a,[,v])=>a+v,0);
+    resetLanguageColors();
+    ensureLanguageColors(sorted.map(([lang]) => lang));
+
+    const { labels, values } = computeSlices(sorted, total, { max:16, minShare:0.005 });
 
     renderDonut(labels, values);
     renderBars(labels, values.map(v=>Math.round(v/1024)));
-    renderProjects(topStarred);
+    renderProjects(topStarred, repoLangs);
     setStats(repos.length, labels[0], stars);
 
   }catch(err){
