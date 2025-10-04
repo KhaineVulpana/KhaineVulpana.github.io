@@ -6,17 +6,68 @@ let donutChart = null;
 let barsChart = null;
 let projectCharts = [];
 
-const brandPalette = [
-  '#8ecaff', '#5fa8ff', '#2f7bff', '#1b56d6',
-  '#f6b3c8', '#e985a8', '#d45c88', '#b63e71', '#92265a', '#5a0d21',
-  '#a8f0e4', '#6fd5c2', '#3db6a3', '#2f8c8c',
-  '#fad48b', '#f6a768', '#f07e5f', '#d95c59', '#9c62ff', '#7e4cff'
-];
+const maroonShades = ['#5a0d21', '#92265a', '#b63e71', '#d45c88', '#f6b3c8'];
+const blueShades = ['#112a63', '#1b56d6', '#2f7bff', '#5fa8ff', '#8ecaff'];
+const grayShades = ['#111315', '#1f232b', '#2e3440', '#4b5563', '#9aa4b2', '#e7edf3'];
 
-function palette(n){
-  const out = [];
-  for(let i=0;i<n;i++) out.push(brandPalette[i % brandPalette.length]);
-  return out;
+const shadeSequence = (() => {
+  const sequence = [];
+  const max = Math.max(maroonShades.length, blueShades.length, grayShades.length);
+  for(let i = 0; i < max; i++){
+    if(maroonShades[i]) sequence.push(maroonShades[i]);
+    if(blueShades[i]) sequence.push(blueShades[i]);
+    if(grayShades[i]) sequence.push(grayShades[i]);
+  }
+  return sequence;
+})();
+
+const languageColors = new Map();
+let shadeIndex = 0;
+
+function resetLanguageColors(){
+  languageColors.clear();
+  shadeIndex = 0;
+}
+
+function colorForLanguage(label){
+  if(label === 'Other') return '#9aa4b2';
+  if(!label) return '#2e3440';
+  if(!languageColors.has(label)){
+    const color = shadeSequence[shadeIndex] || shadeSequence[shadeIndex % shadeSequence.length] || '#9aa4b2';
+    languageColors.set(label, color);
+    shadeIndex++;
+  }
+  return languageColors.get(label);
+}
+
+function ensureLanguageColors(languageList){
+  for(const lang of languageList){
+    if(lang && lang !== 'Other') colorForLanguage(lang);
+  }
+}
+
+function colorsForLabels(labels){
+  return labels.map(label => colorForLanguage(label));
+}
+
+function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
+  const labels = [];
+  const values = [];
+  let other = 0;
+  for(const [label, value] of entries){
+    const share = total ? value / total : 0;
+    if(labels.length < max || share >= minShare){
+      labels.push(label);
+      values.push(value);
+    }else{
+      other += value;
+    }
+  }
+  if(other > 0){
+    labels.push('Other');
+    values.push(other);
+  }
+  return { labels, values };
 }
 
 function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
@@ -43,7 +94,7 @@ function renderDonut(labels, values){
   if(donutChart) donutChart.destroy();
   donutChart = new Chart(donutCtx(), {
     type: 'doughnut',
-    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: palette(values.length) }] },
+    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: colorsForLabels(labels) }] },
     options: { plugins: { legend: { labels: { color: '#e7edf3' } } } }
   });
 }
@@ -52,7 +103,7 @@ function renderBars(labels, values){
   if(barsChart) barsChart.destroy();
   barsChart = new Chart(barsCtx(), {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: palette(values.length), borderRadius: 6 }] },
+    data: { labels, datasets: [{ data: values, borderWidth: 0, backgroundColor: colorsForLabels(labels), borderRadius: 6 }] },
     options: {
       indexAxis: 'y',
       scales: {
@@ -102,6 +153,7 @@ function renderProjects(list, repoLangMap){
     }
 
     const { labels, values } = computeSlices(entries, total, { max:6, minShare:0.03 });
+    const backgroundColor = colorsForLabels(labels);
 
     const chart = new Chart(canvas.getContext('2d'), {
       type: 'doughnut',
@@ -110,7 +162,7 @@ function renderProjects(list, repoLangMap){
         datasets: [{
           data: values,
           borderWidth: 0,
-          backgroundColor: palette(values.length),
+          backgroundColor,
         }]
       },
       options: {
@@ -158,6 +210,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const total = sorted.reduce((a,[,v])=>a+v,0);
+    resetLanguageColors();
+    ensureLanguageColors(sorted.map(([lang]) => lang));
+
     const { labels, values } = computeSlices(sorted, total, { max:16, minShare:0.005 });
 
     renderDonut(labels, values);
