@@ -70,6 +70,26 @@ function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
   return { labels, values };
 }
 
+function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
+  const labels = [];
+  const values = [];
+  let other = 0;
+  for(const [label, value] of entries){
+    const share = total ? value / total : 0;
+    if(labels.length < max || share >= minShare){
+      labels.push(label);
+      values.push(value);
+    }else{
+      other += value;
+    }
+  }
+  if(other > 0){
+    labels.push('Other');
+    values.push(other);
+  }
+  return { labels, values };
+}
+
 function renderDonut(labels, values){
   if(donutChart) donutChart.destroy();
   donutChart = new Chart(donutCtx(), {
