@@ -1,5 +1,6 @@
 // Utility module to fetch GitHub language data
 const GH_USER = 'KhaineVulpana';
+const EXCLUDED_REPOS = new Set(['VB-Custom']);
 
 export function getToken(){ return window.localStorage.getItem('gh_token') || ''; }
 export function setToken(t){ if(t) window.localStorage.setItem('gh_token', t); }
@@ -25,24 +26,34 @@ export async function fetchRepos(username=GH_USER){
     if(chunk.length < 100) break;
     page++;
   }
-  return repos.filter(r => !r.fork);
+  return repos.filter(r => !r.fork && !EXCLUDED_REPOS.has(r.name));
 }
 
 export async function aggregateLanguages(username=GH_USER){
   const repos = await fetchRepos(username);
-  const topStarred = [...repos].sort((a,b)=> (b.stargazers_count||0)-(a.stargazers_count||0)).slice(0, 24);
-
-  const allLangs = {};
+  const aggregate = {};
+  const repoLangs = {};
   let stars = 0;
-  await Promise.all(topStarred.map(async (r) => {
-    stars += r.stargazers_count || 0;
-    const langs = await ghFetch(`https://api.github.com/repos/${username}/${r.name}/languages`);
-    for(const [lang, bytes] of Object.entries(langs)){
-      allLangs[lang] = (allLangs[lang] || 0) + bytes;
-    }
-  }));
 
-  return { repos, topStarred, aggregate: allLangs, stars };
+  for(const repo of repos){
+    stars += repo.stargazers_count || 0;
+    try{
+      const langs = await ghFetch(`https://api.github.com/repos/${username}/${repo.name}/languages`);
+      repoLangs[repo.name] = langs;
+      for(const [lang, bytes] of Object.entries(langs)){
+        aggregate[lang] = (aggregate[lang] || 0) + bytes;
+      }
+    }catch(err){
+      console.warn('Language fetch failed for', repo.name, err);
+    }
+  }
+
+  const topStarred = [...repos]
+    .sort((a,b)=> (b.stargazers_count||0)-(a.stargazers_count||0))
+    .slice(0, 24)
+    .map(repo => ({ ...repo, languages: repoLangs[repo.name] || {} }));
+
+  return { repos, topStarred, aggregate, repoLangs, stars };
 }
 
 export function sortLangs(obj){
