@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="assets/css/styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Load the app as an ES module; it imports github.js internally -->
-  <script type="module" src="assets/js/app.js"></script>
+  <script type="module" src="assets/js/app.js" data-github-token=""></script>
 </head>
 <body>
   <div class="grain"></div>
@@ -61,8 +61,10 @@
       <h3>GitHub Language Mix</h3>
       <div class="token">
         <input id="ghToken" type="password" placeholder="Optional: GitHub token for higher rate limits">
-        <button id="saveToken" class="btn btn-tiny">Save</button>
+        <button id="saveToken" class="btn btn-tiny" type="button">Save</button>
+        <button id="clearToken" class="btn btn-tiny btn-ghost" type="button">Clear</button>
       </div>
+      <p id="tokenStatus" class="tiny muted token-status"></p>
     </div>
     <div class="charts">
       <div class="card">
@@ -72,7 +74,7 @@
         <canvas id="langBars" height="200"></canvas>
       </div>
     </div>
-    <p class="muted">Data fetched live from <code>github.com/KhaineVulpana</code>. Token is stored locally in your browser and never sent anywhere else.</p>
+    <p class="muted">Data fetched live from <code>github.com/KhaineVulpana</code>. Configure a token in site settings or save one locally to raise rate limits.</p>
   </section>
 
   <section id="projects" class="panel">

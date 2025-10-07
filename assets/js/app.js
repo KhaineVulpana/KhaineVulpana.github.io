@@ -1,4 +1,4 @@
-import { getToken, setToken, aggregateLanguages, sortLangs } from './github.js';
+import { getStoredToken, hasEmbeddedToken, setToken, aggregateLanguages, sortLangs } from './github.js';
 
 const donutCtx = () => document.getElementById('langDonut').getContext('2d');
 const barsCtx = () => document.getElementById('langBars').getContext('2d');
@@ -10,13 +10,25 @@ const maroonShades = ['#5a0d21', '#92265a', '#b63e71', '#d45c88', '#f6b3c8'];
 const blueShades = ['#112a63', '#1b56d6', '#2f7bff', '#5fa8ff', '#8ecaff'];
 const grayShades = ['#111315', '#1f232b', '#2e3440', '#4b5563', '#9aa4b2', '#e7edf3'];
 
+const colorFamilies = [
+  { shades: maroonShades, order: 'darkToLight' },
+  { shades: blueShades, order: 'lightToDark' },
+  { shades: grayShades, order: 'lightToDark' }
+];
+
 const shadeSequence = (() => {
+  const orientedFamilies = colorFamilies.map(({ shades, order }) => {
+    const list = [...shades];
+    if(order === 'lightToDark') list.reverse();
+    return list;
+  });
+
+  const max = Math.max(...orientedFamilies.map(list => list.length));
   const sequence = [];
-  const max = Math.max(maroonShades.length, blueShades.length, grayShades.length);
   for(let i = 0; i < max; i++){
-    if(maroonShades[i]) sequence.push(maroonShades[i]);
-    if(blueShades[i]) sequence.push(blueShades[i]);
-    if(grayShades[i]) sequence.push(grayShades[i]);
+    for(const list of orientedFamilies){
+      if(list[i]) sequence.push(list[i]);
+    }
   }
   return sequence;
 })();
@@ -48,26 +60,6 @@ function ensureLanguageColors(languageList){
 
 function colorsForLabels(labels){
   return labels.map(label => colorForLanguage(label));
-}
-
-function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
-  const labels = [];
-  const values = [];
-  let other = 0;
-  for(const [label, value] of entries){
-    const share = total ? value / total : 0;
-    if(labels.length < max || share >= minShare){
-      labels.push(label);
-      values.push(value);
-    }else{
-      other += value;
-    }
-  }
-  if(other > 0){
-    labels.push('Other');
-    values.push(other);
-  }
-  return { labels, values };
 }
 
 function computeSlices(entries, total, { max=12, minShare=0.01 } = {}){
@@ -196,10 +188,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   // token UI
   const inp = document.getElementById('ghToken');
   const save = document.getElementById('saveToken');
-  save.addEventListener('click', ()=>{
-    const v = inp.value.trim();
-    if(v){ setToken(v); alert('Token saved locally. Reload to use.'); }
-  });
+  const clear = document.getElementById('clearToken');
+  const status = document.getElementById('tokenStatus');
+
+  if(inp){
+    function setStatus(message){
+      if(status) status.textContent = message;
+    }
+
+    const storedToken = getStoredToken();
+    const embeddedTokenActive = hasEmbeddedToken();
+
+    if(storedToken){
+      setStatus('Token stored in this browser will be used for requests.');
+      inp.placeholder = 'Token stored locally';
+    }else if(embeddedTokenActive){
+      setStatus('Token provided by site configuration is active. Save a token to override it locally.');
+      inp.placeholder = 'Token provided by site config';
+    }else{
+      setStatus('Optional: supply a GitHub token to avoid anonymous rate limits.');
+      inp.placeholder = 'Optional: GitHub token for higher rate limits';
+    }
+
+    if(save){
+      save.addEventListener('click', ()=>{
+        const v = inp.value.trim();
+        if(v){
+          setToken(v);
+          inp.value = '';
+          inp.placeholder = 'Token stored locally';
+          setStatus('Token stored in this browser will be used for requests.');
+          alert('Token saved locally. Reload to use immediately.');
+        }
+      });
+    }
+
+    if(clear){
+      clear.addEventListener('click', ()=>{
+        setToken('');
+        inp.value = '';
+        if(hasEmbeddedToken()){
+          inp.placeholder = 'Token provided by site config';
+          setStatus('Token provided by site configuration is active. Save a token to override it locally.');
+        }else{
+          inp.placeholder = 'Optional: GitHub token for higher rate limits';
+          setStatus('Optional: supply a GitHub token to avoid anonymous rate limits.');
+        }
+        alert('Local token cleared from this browser.');
+      });
+    }
+  }
 
   try{
     const { repos, topStarred, aggregate, repoLangs, stars } = await aggregateLanguages();
@@ -221,6 +259,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     setStats(repos.length, labels[0], stars);
 
   }catch(err){
-    showError('GitHub fetch failed. Open DevTools → Console for details. ' + err.message);
+    const extra = err && typeof err.message === 'string' && err.message.toLowerCase().includes('rate limit')
+      ? ' Add a GitHub token above to increase the limit.'
+      : '';
+    showError('GitHub fetch failed. Open DevTools → Console for details. ' + err.message + extra);
   }
 });
