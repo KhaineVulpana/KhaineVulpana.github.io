@@ -10,29 +10,25 @@ const maroonShades = ['#5a0d21', '#92265a', '#b63e71', '#d45c88', '#f6b3c8'];
 const blueShades = ['#112a63', '#1b56d6', '#2f7bff', '#5fa8ff', '#8ecaff'];
 const grayShades = ['#111315', '#1f232b', '#2e3440', '#4b5563', '#9aa4b2', '#e7edf3'];
 
-const colorFamilies = [maroonShades, blueShades, grayShades];
-
-function buildPalette(reverse = false){
-  const palette = [];
-  const lists = colorFamilies.map(list => reverse ? [...list].reverse() : [...list]);
-  const max = Math.max(...lists.map(list => list.length));
-  for(let i = 0; i < max; i++){
-    for(const list of lists){
-      if(list[i]) palette.push(list[i]);
-    }
-  }
-  return palette;
-}
-
-const lightPalette = buildPalette(true);
-const darkPalette = buildPalette(false);
+const colorFamilies = [
+  { shades: maroonShades, order: 'darkToLight' },
+  { shades: blueShades, order: 'lightToDark' },
+  { shades: grayShades, order: 'lightToDark' }
+];
 
 const shadeSequence = (() => {
+  const orientedFamilies = colorFamilies.map(({ shades, order }) => {
+    const list = [...shades];
+    if(order === 'lightToDark') list.reverse();
+    return list;
+  });
+
+  const max = Math.max(...orientedFamilies.map(list => list.length));
   const sequence = [];
-  const max = Math.max(lightPalette.length, darkPalette.length);
-  for(let i = 0; i < max; i += 3){
-    sequence.push(...lightPalette.slice(i, i + 3));
-    sequence.push(...darkPalette.slice(i, i + 3));
+  for(let i = 0; i < max; i++){
+    for(const list of orientedFamilies){
+      if(list[i]) sequence.push(list[i]);
+    }
   }
   return sequence.filter(Boolean);
 })();
