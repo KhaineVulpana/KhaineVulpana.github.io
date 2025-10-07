@@ -30,7 +30,7 @@ const shadeSequence = (() => {
       if(list[i]) sequence.push(list[i]);
     }
   }
-  return sequence;
+  return sequence.filter(Boolean);
 })();
 
 const languageColors = new Map();
