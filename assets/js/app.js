@@ -1,4 +1,4 @@
-import { getToken, setToken, aggregateLanguages, sortLangs } from './github.js';
+import { getStoredToken, hasEmbeddedToken, setToken, aggregateLanguages, sortLangs } from './github.js';
 
 const donutCtx = () => document.getElementById('langDonut').getContext('2d');
 const barsCtx = () => document.getElementById('langBars').getContext('2d');
@@ -188,10 +188,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   // token UI
   const inp = document.getElementById('ghToken');
   const save = document.getElementById('saveToken');
-  save.addEventListener('click', ()=>{
-    const v = inp.value.trim();
-    if(v){ setToken(v); alert('Token saved locally. Reload to use.'); }
-  });
+  const clear = document.getElementById('clearToken');
+  const status = document.getElementById('tokenStatus');
+
+  if(inp){
+    function setStatus(message){
+      if(status) status.textContent = message;
+    }
+
+    const storedToken = getStoredToken();
+    const embeddedTokenActive = hasEmbeddedToken();
+
+    if(storedToken){
+      setStatus('Token stored in this browser will be used for requests.');
+      inp.placeholder = 'Token stored locally';
+    }else if(embeddedTokenActive){
+      setStatus('Token provided by site configuration is active. Save a token to override it locally.');
+      inp.placeholder = 'Token provided by site config';
+    }else{
+      setStatus('Optional: supply a GitHub token to avoid anonymous rate limits.');
+      inp.placeholder = 'Optional: GitHub token for higher rate limits';
+    }
+
+    if(save){
+      save.addEventListener('click', ()=>{
+        const v = inp.value.trim();
+        if(v){
+          setToken(v);
+          inp.value = '';
+          inp.placeholder = 'Token stored locally';
+          setStatus('Token stored in this browser will be used for requests.');
+          alert('Token saved locally. Reload to use immediately.');
+        }
+      });
+    }
+
+    if(clear){
+      clear.addEventListener('click', ()=>{
+        setToken('');
+        inp.value = '';
+        if(hasEmbeddedToken()){
+          inp.placeholder = 'Token provided by site config';
+          setStatus('Token provided by site configuration is active. Save a token to override it locally.');
+        }else{
+          inp.placeholder = 'Optional: GitHub token for higher rate limits';
+          setStatus('Optional: supply a GitHub token to avoid anonymous rate limits.');
+        }
+        alert('Local token cleared from this browser.');
+      });
+    }
+  }
 
   try{
     const { repos, topStarred, aggregate, repoLangs, stars } = await aggregateLanguages();

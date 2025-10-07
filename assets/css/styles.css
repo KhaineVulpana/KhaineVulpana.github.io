@@ -212,6 +212,10 @@ a:hover {
   align-items: center;
 }
 
+.token-status {
+  margin-top: 4px;
+}
+
 /* Charts */
 .charts {
   display: grid;
